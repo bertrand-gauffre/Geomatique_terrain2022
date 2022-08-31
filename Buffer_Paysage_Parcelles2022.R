@@ -9,6 +9,19 @@ library(ggplot2)
 library(xlsx)
 
 
+
+################################################################################
+################      les Vergers  suivis en  2021        ######################
+################################################################################
+
+# le shapefile des parcelles de 2021
+setwd("P:/SIG/DATA_CBC/Vergers_Cibles")
+parcelles_2021<-st_read("Parcelles_suivies_2021.shp") 
+
+### on cree un shapefile du centroide des parcelles
+center_parcelles_2021<-st_centroid(parcelles_2021)
+
+
 ################################################################################
 ################      les Vergers  suivis en  2022        ######################
 ################################################################################
@@ -39,7 +52,7 @@ OCS_BVD<-st_read("BVD_OCS_21_V5_220228.shp")
 
 ##################   LA COUCHE DES VERGERS PEPINS (code 13X)
 
-## Joint entre OCS BVD et verif vergers + selection des Vergers fruit a pepin 
+## On extrait les vergers de fruits a pepin de la couche OCS 
 vergersPepin_BVD<-OCS_BVD%>%
   filter(grepl("^13", as.character(Code_n3)))%>%
   distinct(FID, .keep_all = TRUE)
@@ -103,6 +116,7 @@ vergerPepin_AB[is.na(vergerPepin_AB)]<-0
 
 ### on cree un buffer autour du centroide des parcelles
 taille_du_buffer<-500
+### ici changer le shapefile de l'annee
 buffer_parcellesCible<-st_buffer(center_parcelles_2022_info, taille_du_buffer, 50) 
 
 ##########################################
@@ -301,8 +315,40 @@ Compo_paysage_vergers_cible_buffer<-Compo_paysage_vergers_cible_buffer %>%
   select(c(1,2,3,4,5,6,7,8,9,10,11,22,23,24,25,26,27,28))
 
 
+#########################   Buffer 2022   ###################
 
+## Buffer 2022 // 1000 m
+colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer1000",sep="_")
+buffer1000_parcelles2022<-Compo_paysage_vergers_cible_buffer
 
+## Buffer 2022 // 500 m
+colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer500",sep="_")
+buffer500_parcelles2022<-Compo_paysage_vergers_cible_buffer
+
+paysage_2022 <- merge(buffer500_parcelles2022, buffer1000_parcelles2022, by.x="id_plot_buffer500", by.y="id_plot_buffer1000", all.x=F, all.y=F)
+names(paysage_2022)[1]<-paste("id_plot")
+  
+
+#########################   Buffer 2021   ###################
+
+## Buffer 2021 // 1000 m
+colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer1000",sep="_")
+buffer1000_parcelles2021<-Compo_paysage_vergers_cible_buffer
+
+## Buffer 2021 // 500 m
+#colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer500",sep="_")
+#buffer500_parcelles2021<-Compo_paysage_vergers_cible_buffer
+
+paysage_2021 <- merge(buffer500_parcelles2021, buffer1000_parcelles2021, by.x="id_plot_buffer500", by.y="id_plot_buffer1000", all.x=F, all.y=F)
+names(paysage_2021)[1]<-paste("id_plot")
+
+theDataSet<-rbind(paysage_2021,paysage_2022)
+list_plot<-as.data.frame(unique(theDataSet$id_plot))
+names(list_plot)[1]<-paste("id_plot")
+
+paysageB500B1000_allVergers<-distinct(theDataSet)
+setwd("C:/BERTRAND/PROJECT_Filets/ANALYSES/DONNEES PAYSAGE")
+write.csv(paysageB500B1000_allVergers, "DonneesPaysage_B500_B1000_Vergers21et22.csv", row.names = FALSE)
 
 
 
