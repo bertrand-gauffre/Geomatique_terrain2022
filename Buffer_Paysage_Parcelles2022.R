@@ -117,7 +117,7 @@ vergerPepin_AB[is.na(vergerPepin_AB)]<-0
 ### on cree un buffer autour du centroide des parcelles
 taille_du_buffer<-500
 ### ici changer le shapefile de l'annee
-buffer_parcellesCible<-st_buffer(center_parcelles_2022_info, taille_du_buffer, 50) 
+buffer_parcellesCible<-st_buffer(center_parcelles_2021, taille_du_buffer, 50) 
 
 ##########################################
 #################      % OCS within buffers        
@@ -190,7 +190,7 @@ st_geometry(inter_VergerFilet_buffer_parcellesCible) <- NULL
 aires_buffer_parcellesCible<-inter_VergerFilet_buffer_parcellesCible %>% 
   group_by(id_plot) %>%
   summarise(poly_n = n(), area_filets=sum(airebuffer))%>%
-  mutate(percent_verger_filet=as.numeric(area_filets/(3.141016*500*500))*100) ## buffer 500
+  mutate(percent_verger_filet=as.numeric(area_filets/(3.141016*taille_du_buffer*taille_du_buffer))*100) ## 
 
 
 ####### Rassembler les données filets avec donnees OCS 
@@ -230,7 +230,7 @@ st_geometry(inter_buffer_parcellesCible_bio) <- NULL
 aires_buffer_parcellesCible_bio<-inter_buffer_parcellesCible_bio %>% 
   group_by(id_plot) %>%
   summarise(poly_n = n(), area_AB=sum(airebuffer))%>%
-  mutate(percent_verger_bio=as.numeric(area_AB/(3.141016*500*500))*100)
+  mutate(percent_verger_bio=as.numeric(area_AB/(3.141016*taille_du_buffer*taille_du_buffer))*100)
 
 ## On merge avec le tableau precedent
 vergers_parcellesCible_final0 <- merge(zizou2, aires_buffer_parcellesCible_bio, by="id_plot", all.x=T)
@@ -275,7 +275,7 @@ compo_VEGET_buffer_parcellesCible <- areas_VEGET_buffer_parcellesCible %>%
   select(!(poly_n))%>%
   pivot_wider(names_from="NATURE", values_from="area_OCS")%>%
   mutate(id_plot=as.character(id_plot))%>%
-  mutate(area_tot_buffer=(3.141016*500*500))
+  mutate(area_tot_buffer=(3.141016*taille_du_buffer*taille_du_buffer))
 
 #### ATTZENTION VERIFIER QUE cA CORRESPOND AVANT
 colnames(compo_VEGET_buffer_parcellesCible) <- c("id_plot", "bois", "foret_fermee_feuillus", "haie", "lande_ligneuse", "verger", "foret_fermee_mixte", "foret_ouverte", "vigne", "foret_fermee_coniferes", "area_tot_buffer")
@@ -336,8 +336,8 @@ colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_ver
 buffer1000_parcelles2021<-Compo_paysage_vergers_cible_buffer
 
 ## Buffer 2021 // 500 m
-#colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer500",sep="_")
-#buffer500_parcelles2021<-Compo_paysage_vergers_cible_buffer
+colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer500",sep="_")
+buffer500_parcelles2021<-Compo_paysage_vergers_cible_buffer
 
 paysage_2021 <- merge(buffer500_parcelles2021, buffer1000_parcelles2021, by.x="id_plot_buffer500", by.y="id_plot_buffer1000", all.x=F, all.y=F)
 names(paysage_2021)[1]<-paste("id_plot")
