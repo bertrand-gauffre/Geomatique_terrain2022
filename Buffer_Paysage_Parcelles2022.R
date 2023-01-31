@@ -1,14 +1,13 @@
 
 
 ########## Charger les librairies
+.libPaths("C:/BERTRAND/OUTILS/R/win-library/4.2", include.site = TRUE)
 library(st)
 library(sf)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(xlsx)
-
-
 
 ################################################################################
 ################      les Vergers  suivis en  2021        ######################
@@ -28,10 +27,10 @@ center_parcelles_2021<-st_centroid(parcelles_2021)
 
 # le shapefile des parcelles de 2022
 setwd("P:/SIG/DATA_CBC/Vergers_Cibles")
-parcelles_2022<-st_read("Parcelles_suivies_2022b.shp") 
+parcelles_2022<-st_read("Parcelles_suivies_2022.shp") 
 
 ## Les infos des parcelles 2022
-setwd("P:/SIG/TERRAIN_2022/Parcelles_2022")
+setwd("P:/EPI/donnees chaudes/ZA Basse Durance/DONNEES_TERRAIN_2022")
 info_vergers_2022 <- read.csv("INFO_PARCELLES_2022.csv", header=T, sep=";") 
 
 parcelles_2022_info <- merge(parcelles_2022, info_vergers_2022, by.x="id_plot", by.y="id_parcelle", all.x=T)
@@ -109,8 +108,36 @@ vergerPepin_AB[is.na(vergerPepin_AB)]<-0
 
 
 ################################################################################
+##################          La couche de Haies         #########################
 ################################################################################
-##############    
+
+setwd("P:/SIG/Chantier numerisation ZA BVD 2020/HAIES/DATA")
+
+Haies_JCB <- st_read("HaiesNumeriseesJCharles2022.shp")
+#Haies_JCB <- Haies_JCB %>%
+#  mutate(numerisateur = "JCB", id=row_number())%>%
+#  dplyr::select(id, geometry,numerisateur)
+
+Haies_STEF <- st_read("numerisation_haies_stephanie2022.shp")
+#Haies_STEF <- Haies_STEF %>%
+#  mutate(numerisateur = "STEF", id=row_number())%>%
+# dplyr::select(id, geometry,numerisateur)
+
+#combined_haies <- st_union(Haies_JCB, Haies_STEF)
+
+setwd("P:/SIG/Chantier numerisation ZA BVD 2020/HAIES/DATA")
+combined_haies <- st_read("fusionStephJCB_janv23.shp")
+combined_haies <- combined_haies %>%
+  mutate( id=row_number())%>%
+  dplyr::select(id, A_verifier, layer, geometry)
+
+
+
+################################################################################
+################################################################################
+#                                                                              #
+#  A partir d'ici il faut modifier IMPUT FILE de parcelle et taille de buffer  #
+#                                                                              #
 ################################################################################
 ################################################################################
 
@@ -118,6 +145,7 @@ vergerPepin_AB[is.na(vergerPepin_AB)]<-0
 taille_du_buffer<-500
 ### ici changer le shapefile de l'annee
 buffer_parcellesCible<-st_buffer(center_parcelles_2021, taille_du_buffer, 50) 
+
 
 ##########################################
 #################      % OCS within buffers        
@@ -249,6 +277,95 @@ pbio <- vergers_parcellesCible_final %>%
   ggtitle("Bin size = 5%"); pbio
 
 
+##########################################
+#################      Lineaire de haies within buffer        
+##########################################
+
+inter_haies_buffer_parcellesCible<-st_intersection(combined_haies, buffer_parcellesCible) 
+## new column avec area
+inter_haies_buffer_parcellesCible$longueur<-st_length(inter_haies_buffer_parcellesCible$geometry)
+
+#### Calcul lineaire par ID (ID = chaque buffer) + transfo en "dataframe"
+## on enleve la geometrie avant
+st_geometry(inter_haies_buffer_parcellesCible) <- NULL
+## aire de chaque code parcelle
+inter_haies_buffer_parcellesCible<-inter_haies_buffer_parcellesCible %>% 
+  group_by(id_plot) %>%
+  summarise(nb_haies = n(), length_haies=sum(longueur))
+
+
+################################################################################
+############## FINALISATION DU FICHIER
+
+## On merge avec le tableau precedent
+Compo_paysage_vergers_cible_buffer <- merge(vergers_parcellesCible_final, inter_haies_buffer_parcellesCible, by="id_plot", all.x=T)
+Compo_paysage_vergers_cible_buffer<-Compo_paysage_vergers_cible_buffer %>% 
+select(c(1,2,3,4,5,6,7,8,9,10,11,13))
+
+
+#########################   Buffer 2022   ###################
+
+## Buffer 2022 // 1000 m
+colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer1000",sep="_")
+buffer1000_parcelles2022<-Compo_paysage_vergers_cible_buffer
+
+## Buffer 2022 // 500 m
+colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer500",sep="_")
+buffer500_parcelles2022<-Compo_paysage_vergers_cible_buffer
+
+paysage_2022 <- merge(buffer500_parcelles2022, buffer1000_parcelles2022, by.x="id_plot_buffer500", by.y="id_plot_buffer1000", all.x=F, all.y=F)
+names(paysage_2022)[1]<-paste("id_plot")
+  
+
+#########################   Buffer 2021   ###################
+
+## Buffer 2021 // 1000 m
+colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer1000",sep="_")
+buffer1000_parcelles2021<-Compo_paysage_vergers_cible_buffer
+
+## Buffer 2021 // 500 m
+colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer500",sep="_")
+buffer500_parcelles2021<-Compo_paysage_vergers_cible_buffer
+
+paysage_2021 <- merge(buffer500_parcelles2021, buffer1000_parcelles2021, by.x="id_plot_buffer500", by.y="id_plot_buffer1000", all.x=F, all.y=F)
+names(paysage_2021)[1]<-paste("id_plot")
+
+
+#################  On combine les 2 années
+theDataSet<-rbind(paysage_2021,paysage_2022)
+list_plot<-as.data.frame(unique(theDataSet$id_plot))
+names(list_plot)[1]<-paste("id_plot")
+
+paysageB500B1000_allVergers<-distinct(theDataSet)
+setwd("C:/BERTRAND/PROJECT_Filets/ANALYSES/DONNEES PAYSAGE")
+write.csv(paysageB500B1000_allVergers, "DonneesPaysage_B500_B1000_Vergers21et22_version2023.csv", row.names = FALSE)
+
+
+### petit truc pour les parcelles de jean charles
+
+paysageB500B1000_allVergers
+
+## Les infos des parcelles 2022
+setwd("P:/EPI/donnees chaudes/ZA Basse Durance/DONNEES_TERRAIN_2022")
+info_vergers_2022 <- read.csv("INFO_PARCELLES_2022.csv", header=T, sep=";") 
+
+paysageB500B1000_allVergers_INFO <- merge(paysageB500B1000_allVergers, info_vergers_2022, by.x="id_plot", by.y="id_parcelle", all.x=T)
+
+paysageB500B1000_allVergers_INFO_JCB<- paysageB500B1000_allVergers_INFO%>%
+  filter(exclu_oiseaux=="oui")
+
+setwd("C:/BERTRAND/PROJECT_Filets/ANALYSES/DONNEES PAYSAGE")
+write.csv(paysageB500B1000_allVergers_INFO_JCB, "DonneesPaysage_B500_B1000_InfoParcelle_VergersExcluBirds.csv", row.names = FALSE)
+
+
+
+
+
+
+
+
+### Pour les haies et ESN avant la couche de lineaire de haies
+
 ###########################################
 ###################           Buffer % ESN 
 ###########################################
@@ -305,51 +422,4 @@ p <- compo_VEGET_ESN_buffer_parcellesCible %>%
   ggplot( aes(x=percent_ESN)) +
   geom_histogram( binwidth=5, fill="#69b3a2", color="#e9ecef", alpha=0.9) +
   ggtitle("Bin size = 5%"); p
-
-################################################################################
-############## FINALISATION DU FICHIER
-
-## On merge avec le tableau precedent
-Compo_paysage_vergers_cible_buffer <- merge(vergers_parcellesCible_final, compo_VEGET_ESN_buffer_parcellesCible, by="id_plot", all.x=T)
-Compo_paysage_vergers_cible_buffer<-Compo_paysage_vergers_cible_buffer %>% 
-  select(c(1,2,3,4,5,6,7,8,9,10,11,22,23,24,25,26,27,28))
-
-
-#########################   Buffer 2022   ###################
-
-## Buffer 2022 // 1000 m
-colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer1000",sep="_")
-buffer1000_parcelles2022<-Compo_paysage_vergers_cible_buffer
-
-## Buffer 2022 // 500 m
-colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer500",sep="_")
-buffer500_parcelles2022<-Compo_paysage_vergers_cible_buffer
-
-paysage_2022 <- merge(buffer500_parcelles2022, buffer1000_parcelles2022, by.x="id_plot_buffer500", by.y="id_plot_buffer1000", all.x=F, all.y=F)
-names(paysage_2022)[1]<-paste("id_plot")
-  
-
-#########################   Buffer 2021   ###################
-
-## Buffer 2021 // 1000 m
-colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer1000",sep="_")
-buffer1000_parcelles2021<-Compo_paysage_vergers_cible_buffer
-
-## Buffer 2021 // 500 m
-colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer500",sep="_")
-buffer500_parcelles2021<-Compo_paysage_vergers_cible_buffer
-
-paysage_2021 <- merge(buffer500_parcelles2021, buffer1000_parcelles2021, by.x="id_plot_buffer500", by.y="id_plot_buffer1000", all.x=F, all.y=F)
-names(paysage_2021)[1]<-paste("id_plot")
-
-theDataSet<-rbind(paysage_2021,paysage_2022)
-list_plot<-as.data.frame(unique(theDataSet$id_plot))
-names(list_plot)[1]<-paste("id_plot")
-
-paysageB500B1000_allVergers<-distinct(theDataSet)
-setwd("C:/BERTRAND/PROJECT_Filets/ANALYSES/DONNEES PAYSAGE")
-write.csv(paysageB500B1000_allVergers, "DonneesPaysage_B500_B1000_Vergers21et22.csv", row.names = FALSE)
-
-
-
 
