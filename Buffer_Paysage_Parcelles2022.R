@@ -2,41 +2,29 @@
 
 ########## Charger les librairies
 .libPaths("C:/BERTRAND/OUTILS/R/win-library/4.2", include.site = TRUE)
-library(st)
+library(st) # utilisé ?
 library(sf)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
-library(xlsx)
+library(openxlsx)
 
 ################################################################################
-################      les Vergers  suivis en  2021        ######################
+################           les Vergers  cibles            ######################
 ################################################################################
 
 # le shapefile des parcelles de 2021
 setwd("P:/SIG/DATA_CBC/Vergers_Cibles")
 parcelles_2021<-st_read("Parcelles_suivies_2021.shp") 
-
-### on cree un shapefile du centroide des parcelles
-center_parcelles_2021<-st_centroid(parcelles_2021)
-
-
-################################################################################
-################      les Vergers  suivis en  2022        ######################
-################################################################################
-
-# le shapefile des parcelles de 2022
-setwd("P:/SIG/DATA_CBC/Vergers_Cibles")
 parcelles_2022<-st_read("Parcelles_suivies_2022.shp") 
+parcelles_2023<-st_read("Parcelles_suivies_2023.shp") 
 
-## Les infos des parcelles 2022
-setwd("P:/EPI/donnees chaudes/ZA Basse Durance/DONNEES_TERRAIN_2022")
-info_vergers_2022 <- read.csv("INFO_PARCELLES_2022.csv", header=T, sep=";") 
+# combine tout ça pour avoir 1 shapefile (sans parcelles dupliquées)
+single_sf <- dplyr::bind_rows(list(parcelles_2021,parcelles_2022,parcelles_2023))
+parcelles_21_22_23 <-single_sf %>% distinct(id_plot, .keep_all = TRUE)
 
-parcelles_2022_info <- merge(parcelles_2022, info_vergers_2022, by.x="id_plot", by.y="id_parcelle", all.x=T)
-
-### on cree un shapefile du centroide des parcelles
-center_parcelles_2022_info<-st_centroid(parcelles_2022_info)
+### cree un shapefile du centroide des parcelles
+center_parcelles<-st_centroid(parcelles_21_22_23)
 
 
 ################################################################################
@@ -49,6 +37,11 @@ setwd("P:/SIG/DATA_CBC/OCS_BVD")
 OCS_BVD<-st_read("BVD_OCS_21_V5_220228.shp")
 
 
+#### AJOUTER TRAVAIL ALEXIS
+
+
+
+
 ##################   LA COUCHE DES VERGERS PEPINS (code 13X)
 
 ## On extrait les vergers de fruits a pepin de la couche OCS 
@@ -58,13 +51,18 @@ vergersPepin_BVD<-OCS_BVD%>%
 
 
 ################################################################################
-#############      La couche de numerisation des filets     ####################
+#############             La couche des filets              ####################
 ################################################################################
 
-### On charge la couche numérisation filets (necessaire tant que verif pas terminee)
-setwd("P:/SIG/Chantier_Numerisation_Filets")
-verif_vergers <- st_read("Numerisation_Filets_Decembre21.shp")
+### charge la couche numérisation filets (necessaire tant que verif pas terminee)
+setwd("P:/SIG/Chantier_Numerisation_Filets/DATA/")
+verif_vergers <- st_read("230215_numerisation_filets.shp")
+verif_vergers[which(verif_vergers$filet == "non"),"type_filet"]<-"absent"
 
+### Combien de d'obs 
+nb_ech_par<-verif_vergers %>%
+  group_by(type_filet) %>%
+  summarise(nbre=n());nb_ech_par
 
 ################################################################################
 #############         La couche de vergers pepin AB         ####################
@@ -141,10 +139,11 @@ combined_haies <- combined_haies %>%
 ################################################################################
 ################################################################################
 
-### on cree un buffer autour du centroide des parcelles
-taille_du_buffer<-500
-### ici changer le shapefile de l'annee
-buffer_parcellesCible<-st_buffer(center_parcelles_2021, taille_du_buffer, 50) 
+### definir la taille de buffer souhaitee
+taille_du_buffer<-1000
+
+### definir le shapefile de l'annee (center_parcelles_XXXX)
+buffer_parcellesCible<-st_buffer(center_parcelles_2022, taille_du_buffer, 50) 
 
 
 ##########################################
@@ -178,9 +177,9 @@ compo_buffer_parcellesCible <- areas_buffer_parcellesCible %>%
 
 compo_buffer_parcellesCible <- inner_join(compo_buffer_parcellesCible, AREA_tot_buffer_parcellesCible, by= c("id_plot"="id"))
 colnames(compo_buffer_parcellesCible) <- c("id_plot", "vergers", "urbain", "cult_annuelles", "milieu_nat", "prairies", "vignes", "autres", "area_tot_buffer")
-
+  
 #### pourcentage de surface occupe par chaque code parcelle
-compo_buffer_parcellesCible$pourcent_verger <- as.numeric(compo_buffer_parcellesCible$vergers/compo_buffer_parcellesCible$area_tot_buffer)*100
+#compo_buffer_parcellesCible$pourcent_verger <- as.numeric(compo_buffer_parcellesCible$vergers/compo_buffer_parcellesCible$area_tot_buffer)*100
 compo_buffer_parcellesCible$pourcent_urbain <- as.numeric(compo_buffer_parcellesCible$urbain/compo_buffer_parcellesCible$area_tot_buffer)*100
 compo_buffer_parcellesCible$pourcent_cult_annuelle <- as.numeric(compo_buffer_parcellesCible$cult_annuelles/compo_buffer_parcellesCible$area_tot_buffer)*100
 compo_buffer_parcellesCible$pourcent_milieu_nat <- as.numeric(compo_buffer_parcellesCible$milieu_nat/compo_buffer_parcellesCible$area_tot_buffer)*100
@@ -190,54 +189,82 @@ compo_buffer_parcellesCible$pourcent_autre <- as.numeric(compo_buffer_parcellesC
 
 ## Faire une figure
 p <- compo_buffer_parcellesCible %>%
-  ggplot( aes(x=pourcent_verger)) +
+  ggplot( aes(x=pourcent_urbain)) +
   geom_histogram( binwidth=5, fill="#69b3a2", color="#e9ecef", alpha=0.9) +
   ggtitle("Bin size = 5%"); p
 
 ############################################
-#################     % filets within Buffer   
+#################     % vergers et filets within Buffer   
 ############################################
 
 ### On charge la couche numérisation filets
 verif_vergers
+### on cree un shapefile du centroide des vergers verifies
+center_vergers<-st_centroid(verif_vergers)
 
-## Joint entre OCS BVD et corr vergers, selection des Vergers AVEC filet
+## Joint entre OCS BVD et corr vergers
 OCS_filets_BVD_x_filets_correction<-OCS_BVD%>%
-  st_join(verif_vergers)%>%
-  filter(grepl("^1", as.character(Code_n3.y)))%>%
-  filter(filet=="oui"| filet=="mixte")
-## On fait intersection entre buffers et couche des vergers filets
-inter_VergerFilet_buffer_parcellesCible<-st_intersection(OCS_filets_BVD_x_filets_correction, buffer_parcellesCible) 
+  st_join(center_vergers)%>%
+  filter(grepl("^1", as.character(Code_n3.y)))
+
+### Intersection avec buffer !!!
+inter_OCS_buffer_vergers<-st_intersection(OCS_filets_BVD_x_filets_correction, buffer_parcellesCible) 
 ## new column avec area
-inter_VergerFilet_buffer_parcellesCible$airebuffer<-st_area(inter_VergerFilet_buffer_parcellesCible$geometry)
-## Calcul surface par ID (ID = chaque buffer)+ transfo en "dataframe"
+inter_OCS_buffer_vergers$aire<-st_area(inter_OCS_buffer_vergers$geometry)
+
 ## on enleve la geometrie avant
-st_geometry(inter_VergerFilet_buffer_parcellesCible) <- NULL
-
+st_geometry(inter_OCS_buffer_vergers) <- NULL
 ## aire de chaque code parcelle
-aires_buffer_parcellesCible<-inter_VergerFilet_buffer_parcellesCible %>% 
-  group_by(id_plot) %>%
-  summarise(poly_n = n(), area_filets=sum(airebuffer))%>%
-  mutate(percent_verger_filet=as.numeric(area_filets/(3.141016*taille_du_buffer*taille_du_buffer))*100) ## 
+areas_buffer_filets<-inter_OCS_buffer_vergers %>% 
+  group_by(id_plot, type_filet) %>%
+  summarise(poly_n = n(), area_filets=sum(aire))
 
+## aire totale de verger dans chaque buffer (tout type de verger)
+areas_buffer_verger<-by(areas_buffer_filets$area_filets, areas_buffer_filets$id_plot, sum)
+areas_buffer_verger<-cbind(areas_buffer_verger)
+areas_buffer_verger<-as.data.frame(areas_buffer_verger)
+areas_buffer_verger$id<-row.names(areas_buffer_verger) 
 
-####### Rassembler les données filets avec donnees OCS 
-zizou2<-as.data.frame(merge(aires_buffer_parcellesCible, compo_buffer_parcellesCible, by="id_plot", all.y=T))
-#### remplacer les NA par zero (recup les parcelles sans filet dans l buffer)
-zizou2[is.na(zizou2)]<-0
+#tableau final aires
+compo_filet_buffer_parcellesCible <- areas_buffer_filets %>% 
+  select(!(poly_n))%>%
+  pivot_wider(names_from="type_filet", values_from="area_filets")
+# on rename les col
+colnames(compo_filet_buffer_parcellesCible) <- c("id_plot", "absent", "monoparcelle", "monorang", "non_deploye")
 
-#### Calcul de la proportion des vergers qui ont des filets
-zizou2$percent_of_orchards_with_nets<-as.numeric(zizou2$area_filets/zizou2$vergers)*100
+compo_filet_buffer_parcellesCible<-compo_filet_buffer_parcellesCible%>%
+  mutate(absent= as.numeric(absent), monoparcelle= as.numeric(monoparcelle),monorang= as.numeric(monorang),non_deploye= as.numeric(non_deploye))%>%
+  replace(is.na(.),0)%>% 
+  mutate(id_plot=as.character(id_plot))
+  
+compo_filet_buffer_parcellesCible <- inner_join(compo_filet_buffer_parcellesCible, areas_buffer_verger, by= c("id_plot"="id"))
+
+#### pourcentage de surface occupe par chaque type de filet par rapport aux vergers
+compo_filet_buffer_parcellesCible$pourcent_vergers_filet_absent <- as.numeric((compo_filet_buffer_parcellesCible$absent/compo_filet_buffer_parcellesCible$areas_buffer_verger)*100)
+compo_filet_buffer_parcellesCible$pourcent_vergers_filet_monoparcelle <- as.numeric((compo_filet_buffer_parcellesCible$monoparcelle/compo_filet_buffer_parcellesCible$areas_buffer_verger)*100)
+compo_filet_buffer_parcellesCible$pourcent_vergers_filet_monorang <- as.numeric((compo_filet_buffer_parcellesCible$monorang/compo_filet_buffer_parcellesCible$areas_buffer_verger)*100)
+compo_filet_buffer_parcellesCible$pourcent_vergers_filet_non_deploye <- as.numeric((compo_filet_buffer_parcellesCible$non_deploye/compo_filet_buffer_parcellesCible$areas_buffer_verger)*100)
+
+#### pourcentage de surface du buffer occupe par chaque type de filet 
+compo_filet_buffer_parcellesCible$pourcent_filet_absent <- as.numeric((compo_filet_buffer_parcellesCible$absent/(3.141016*taille_du_buffer*taille_du_buffer))*100)
+compo_filet_buffer_parcellesCible$pourcent_filet_monoparcelle <- as.numeric((compo_filet_buffer_parcellesCible$monoparcelle/(3.141016*taille_du_buffer*taille_du_buffer))*100)
+compo_filet_buffer_parcellesCible$pourcent_filet_monorang <- as.numeric((compo_filet_buffer_parcellesCible$monorang/(3.141016*taille_du_buffer*taille_du_buffer))*100)
+compo_filet_buffer_parcellesCible$pourcent_filet_non_deploye <- as.numeric((compo_filet_buffer_parcellesCible$non_deploye/(3.141016*taille_du_buffer*taille_du_buffer))*100)
+# calcul surface vergers
+compo_filet_buffer_parcellesCible$pourcent_vergers <-compo_filet_buffer_parcellesCible$pourcent_filet_absent+compo_filet_buffer_parcellesCible$pourcent_filet_monoparcelle+compo_filet_buffer_parcellesCible$pourcent_filet_monorang+compo_filet_buffer_parcellesCible$pourcent_filet_non_deploye
+
+compo_filet_buffer_parcellesCible<-compo_filet_buffer_parcellesCible%>% replace(is.na(.),0)
 
 ## Faire une figure filets / pas filet
-fig_filets <- zizou2 %>%
-  ggplot( aes(x=percent_verger_filet)) +
+fig_filets <- compo_filet_buffer_parcellesCible %>%
+  ggplot( aes(x=pourcent_vergers_filet_monorang)) +
   geom_histogram( binwidth=5, fill="#69b3a2", color="#e9ecef", alpha=0.9) +
   ggtitle("Bin size = 5%");fig_filets
 
 #### FIGURE AVEC DOUBLE GRADIENT
-ggplot(zizou2, aes(x=pourcent_verger, y=percent_verger_filet)) + 
-  geom_point(size=1) 
+ggplot(compo_filet_buffer_parcellesCible, aes(x=pourcent_vergers, y=pourcent_filet_monorang)) + 
+  geom_point(size=1) +
+  xlim(0,100) + ylim(0,100)
 
 ###########################################
 ###################           Buffer % bio 
@@ -261,14 +288,14 @@ aires_buffer_parcellesCible_bio<-inter_buffer_parcellesCible_bio %>%
   mutate(percent_verger_bio=as.numeric(area_AB/(3.141016*taille_du_buffer*taille_du_buffer))*100)
 
 ## On merge avec le tableau precedent
-vergers_parcellesCible_final0 <- merge(zizou2, aires_buffer_parcellesCible_bio, by="id_plot", all.x=T)
+vergers_parcellesCible_final0 <- merge(compo_filet_buffer_parcellesCible, aires_buffer_parcellesCible_bio, by="id_plot", all.x=T)
 #### remplacer les NA par zero (recup les parcelles sans AB dans l buffer)
 vergers_parcellesCible_final0[is.na(vergers_parcellesCible_final0)]<-0
 
 
 ### Le dataset complet
 vergers_parcellesCible_final<-vergers_parcellesCible_final0 %>% 
-  select(c(1,13,14,15,16,17,18,19,23,4,20))
+  select(c(1,7,8,9,10,11,12,13,14,15,18))
 
 ## Faire une figure bio/pas bio
 pbio <- vergers_parcellesCible_final %>%
@@ -299,8 +326,11 @@ inter_haies_buffer_parcellesCible<-inter_haies_buffer_parcellesCible %>%
 
 ## On merge avec le tableau precedent
 Compo_paysage_vergers_cible_buffer <- merge(vergers_parcellesCible_final, inter_haies_buffer_parcellesCible, by="id_plot", all.x=T)
-Compo_paysage_vergers_cible_buffer<-Compo_paysage_vergers_cible_buffer %>% 
-select(c(1,2,3,4,5,6,7,8,9,10,11,13))
+
+compo_buffer_parcellesCible<-compo_buffer_parcellesCible %>% 
+  select(c(1,10,11,12,13,14,15))
+Compo_paysage_vergers_cible_buffer <- merge(Compo_paysage_vergers_cible_buffer, compo_buffer_parcellesCible, by="id_plot", all.x=T)
+
 
 
 #########################   Buffer 2022   ###################
@@ -313,22 +343,35 @@ buffer1000_parcelles2022<-Compo_paysage_vergers_cible_buffer
 colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer500",sep="_")
 buffer500_parcelles2022<-Compo_paysage_vergers_cible_buffer
 
-paysage_2022 <- merge(buffer500_parcelles2022, buffer1000_parcelles2022, by.x="id_plot_buffer500", by.y="id_plot_buffer1000", all.x=F, all.y=F)
+## Buffer 2022 // 250 m
+colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer250",sep="_")
+buffer250_parcelles2022<-Compo_paysage_vergers_cible_buffer
+
+
+paysage_2022 <- merge(buffer250_parcelles2022, buffer500_parcelles2022, by.x="id_plot_buffer250", by.y="id_plot_buffer500", all.x=F, all.y=F)
 names(paysage_2022)[1]<-paste("id_plot")
-  
+paysage_2022 <-merge(paysage_2022, buffer1000_parcelles2022, by.x="id_plot", by.y="id_plot_buffer1000", all.x=F, all.y=F)
+
+
+
 
 #########################   Buffer 2021   ###################
 
 ## Buffer 2021 // 1000 m
 colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer1000",sep="_")
 buffer1000_parcelles2021<-Compo_paysage_vergers_cible_buffer
-
 ## Buffer 2021 // 500 m
 colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer500",sep="_")
 buffer500_parcelles2021<-Compo_paysage_vergers_cible_buffer
+## Buffer 2021 // 250 m
+colnames(Compo_paysage_vergers_cible_buffer) <- paste(colnames(Compo_paysage_vergers_cible_buffer),"buffer250",sep="_")
+buffer250_parcelles2021<-Compo_paysage_vergers_cible_buffer
 
-paysage_2021 <- merge(buffer500_parcelles2021, buffer1000_parcelles2021, by.x="id_plot_buffer500", by.y="id_plot_buffer1000", all.x=F, all.y=F)
+paysage_2021 <- merge(buffer250_parcelles2021, buffer500_parcelles2021, by.x="id_plot_buffer250", by.y="id_plot_buffer500", all.x=F, all.y=F)
 names(paysage_2021)[1]<-paste("id_plot")
+paysage_2021 <-merge(paysage_2021, buffer1000_parcelles2021, by.x="id_plot", by.y="id_plot_buffer1000", all.x=F, all.y=F)
+
+
 
 
 #################  On combine les 2 années
@@ -336,9 +379,9 @@ theDataSet<-rbind(paysage_2021,paysage_2022)
 list_plot<-as.data.frame(unique(theDataSet$id_plot))
 names(list_plot)[1]<-paste("id_plot")
 
-paysageB500B1000_allVergers<-distinct(theDataSet)
-setwd("C:/BERTRAND/PROJECT_Filets/ANALYSES/DONNEES PAYSAGE")
-write.csv(paysageB500B1000_allVergers, "DonneesPaysage_B500_B1000_Vergers21et22_version2023.csv", row.names = FALSE)
+paysage_B250_B500_B1000_allVergers2122<-distinct(theDataSet)
+setwd("C:/Users/brgauffre/Nextcloud/MyDrive/PROJECT_Filets/ANALYSES/DONNEES PAYSAGE")
+write.csv(paysage_B250_B500_B1000_allVergers2122, "DonneesPaysage_B250_B500_B1000_Vergers21et22_versionMai2023.csv", row.names = FALSE)
 
 
 ### petit truc pour les parcelles de jean charles
@@ -356,6 +399,9 @@ paysageB500B1000_allVergers_INFO_JCB<- paysageB500B1000_allVergers_INFO%>%
 
 setwd("C:/BERTRAND/PROJECT_Filets/ANALYSES/DONNEES PAYSAGE")
 write.csv(paysageB500B1000_allVergers_INFO_JCB, "DonneesPaysage_B500_B1000_InfoParcelle_VergersExcluBirds.csv", row.names = FALSE)
+
+
+
 
 
 
